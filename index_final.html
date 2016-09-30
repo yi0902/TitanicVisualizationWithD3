@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Titanic Data Survival Rate Visualization</title>
+
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://dimplejs.org/dist/dimple.v2.0.0.min.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+	<script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+	<link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+  
+	<style>
+	  
+	  #categoryContainer{
+		position: fixed;
+        top: 100px;
+        left: 1100px;
+	  }
+	 
+    </style>
+
+	<script type="text/javascript">
+	
+		var data_grouped = [];
+		var data_new = [];
+		var data_length = 24;
+		data_grouped = Array.apply(null, Array(data_length)).map(function (x, i) {return [];});
+	
+		function draw_plot(data){
+			
+			/* ******************************************
+				Construct new data set 
+			******************************************** */
+			
+			for(var i = 0; i < data_length; i++) {
+				
+				data_dict_list = data_grouped[i];
+				
+				//initial variables for each category
+				var nb_survived = 0;
+				var nb_nonsurvived = 0;
+				var rate = 0;
+				var category = data_dict_list[0]['Category'];
+				var gender = data_dict_list[0]['Sex'];
+				var pclass = data_dict_list[0]['Pclass'];
+				var age =  data_dict_list[0]['Age'];
+				var cat = data_dict_list[0]['Category'];
+				var dict = {};
+				
+				//compute survived & non-survived nb and rate
+				data_dict_list.forEach(function(d){
+					if (d["Survived"] === "1"){
+						nb_survived ++;
+					}
+					else{
+						nb_nonsurvived ++;
+					}
+				});
+				rate = nb_survived/(nb_survived + nb_nonsurvived);
+				
+				//set values to a dictionary
+				dict['Gender'] = gender;
+				dict['Pclass'] = pclass;
+				if (age < 20) {
+					dict['Age'] = "[0,20)";
+				}
+				else if ((age >= 20) && (age < 40)){
+					dict['Age'] = "[20,40)";
+				}
+				else if ((age >= 40) && (age < 60)){
+					dict['Age'] = "[40,60)";
+				}
+				else if (age >= 60){
+					dict['Age'] = "[60+)";
+				}
+				if (gender === "male"){
+					dict['Category'] = category;
+				}
+				else{
+					dict['Category'] = category - data_length/2;
+				}
+				dict['Cat_Info'] = dict['Category'] + " : Age " + dict['Age'] + " Pclass " + dict['Pclass'];
+				dict['Nb_Survived'] = nb_survived;
+				dict['Nb_NonSurvived'] = nb_nonsurvived;
+				dict['Nb_Total'] = nb_survived + nb_nonsurvived;
+				dict['Rate'] = rate.toFixed(3);
+				
+				//add dictionary to data set
+				data_new.push(dict);
+			}
+	
+			
+			/* ******************************************
+				Dimple.js section to built basic plot 
+			******************************************** */
+
+			//create SVG container and chart
+            var svg = dimple.newSvg("#chartContainer", 1310, 700);            
+            var chart = new dimple.chart(svg, data_new);
+			//set axis
+			var x = chart.addCategoryAxis("x", "Category");
+            var y = chart.addMeasureAxis("y", "Rate");
+			//size the bubbles by total number of people in the category
+			var z = chart.addMeasureAxis("z", "Nb_Total");
+			//add the bubble series for shift values first so that it is
+			//drawn behind the lines
+			var t = chart.addSeries(["Age", "Pclass", "Nb_Survived", "Nb_NonSurvived", "Rate", "Gender"], dimple.plot.bubble);
+			//customize the tooltip content
+			t.getTooltipText = function (d) {
+					return [
+						"Gender: " + d.aggField[5],
+						"Age: " + d.aggField[0],
+						"Pclass: " + d.aggField[1],
+						"Survived nb: " + d.aggField[2],
+						"Non-Survived nb: " + d.aggField[3],
+						"Total nb: " + (d.aggField[2] + d.aggField[3]),
+						"Survival Rate: " + d.aggField[4]
+					];
+			};
+			//add the line series on top of the bubbles.  
+			//the bubbles and line points will naturally fall in the same places
+            var s = chart.addSeries("Gender", dimple.plot.line);
+			//add line markers to the line because it looks nice
+			s.lineMarkers = true;
+			//show a legend
+			chart.addLegend(1230, 50, 20, 50, "right");
+			//draw chart
+			chart.draw();
+			//set y axis text
+			y.titleShape.text("Survival Rate");
+
+			
+			/* ******************************************
+				Dimple.js section to built an indicator plot
+			******************************************** */
+			
+			//create the indicator chart on the right of the main chart
+			var indicator = new dimple.chart(svg, data_new);
+			// Pick orange as the default bar color
+            var indicator_color = indicator.defaultColors[2];
+			//place the indicator bar chart to the right
+			indicator.setBounds(1175, 320, 200, 311);
+			//add category information along the y axis
+			var ind_y = indicator.addCategoryAxis("y", "Cat_Info");
+			// use rate for bar size and hide the axis
+			var ind_x = indicator.addMeasureAxis("x", "Category");
+			ind_x.hidden = true;
+			//add the bars to the indicator and add event handlers
+			var b = indicator.addSeries(null, dimple.plot.bar);
+			//draw the side chart
+			indicator.draw();
+			//remove the title from the y axis
+			ind_y.titleShape.remove();
+			//remove the lines from the y axis
+			ind_y.shapes.selectAll("line,path").remove();
+			//remove the y axis text inside the plot area
+			ind_y.shapes.selectAll("text")
+                  .style("text-anchor", "start")
+                  .style("font-size", "11px")
+                  .attr("transform", "translate(18, 0.5)");
+			// Customize the bars
+			b.shapes.style("fill", function (d) { return indicator_color.fill;})
+                  .style("stroke", function (d) { return indicator_color.stroke;})
+                  .style("opacity", 0.25)
+				  .attr("width", "180");
+			
+			/* ******************************************
+				d3 section to customize the plot 
+			******************************************** */
+			//add a title
+			svg.append("text")
+			   .attr("x", chart._xPixels() + chart._widthPixels() / 2)
+			   .attr("y", chart._yPixels() - 40)
+			   .style("text-anchor", "middle")
+			   .style("font-family", "sans-serif")
+			   .style("font-weight", "bold")
+			   .style("font-size", "25px")
+			   .text("Titanic passengers survival rate by gender/pclass/age");
+			
+			//add a description
+			svg.append("text")
+			   .attr("x", chart._xPixels())
+			   .attr("y", chart._yPixels() + chart._heightPixels() + 55)
+			   .style("text-anchor", "left")
+			   .style("font-family", "sans-serif")
+			   .style("font-size", "12px")
+			   .style("font-style", "italic")
+			   .text("* The visualization is created based on a regroupement of 1045 data points. Data points whose age or fare value is null have already been excluded.");
+			   
+			svg.append("text")
+			   .attr("x", chart._xPixels())
+			   .attr("y", chart._yPixels() + chart._heightPixels() + 70)
+			   .style("text-anchor", "left")
+			   .style("font-family", "sans-serif")
+			   .style("font-size", "12px")
+			   .style("font-style", "italic")
+			   .text("* The Pclass is a proxy for socio-economic status (SES) : 1st ~ Upper; 2nd ~ Middle; 3rd ~ Lower. The size of bubble reprensents the total number of men or women in this category.");	
+				
+			//rewrite the mouseover event on bars to hide the tooltip
+			d3.selectAll(".dimple-bar")
+				.on("mouseover", function () {
+			});
+			
+			//reset the size of bubble according to total number of people in the category
+			d3.selectAll(".dimple-bubble")
+				.attr("r", function(d){
+					return 6 + (d.aggField[2] + d.aggField[3])/6;
+				});
+			
+			//customize the axis title
+			d3.selectAll(".dimple-title")
+				.style("font-size", "15px")
+				.style("font-weight", "bold");
+			
+			//resize a little the legend text
+			d3.selectAll(".dimple-legend-text")
+				.style("font-size", "11px");
+			
+			//add dash lines to better separte pclasses
+			svg.append("line")
+				.attr("x1", "480")
+				.attr("x2", "480")
+				.attr("y1", chart._yPixels())
+				.attr("y2", chart._yPixels() + chart._heightPixels())
+				.style("stroke", "orange")
+				.style("stroke-dasharray", "10");
+				
+			svg.append("line")
+				.attr("x1", "830")
+				.attr("x2", "830")
+				.attr("y1", chart._yPixels())
+				.attr("y2", chart._yPixels() + chart._heightPixels())
+				.style("stroke", "orange")
+				.style("stroke-dasharray", "10");
+			
+			//add background texts to indicate pclasses
+			svg.selectAll("title_text")
+                  .data(["Pclass 1", "Pclass 2", "Pclass 3"])
+                  .enter()
+                  .append("text")
+                  .attr("x", function (d, i) { return chart._xPixels() + 130 + i * 350; })
+                  .attr("y", chart._yPixels() + chart._heightPixels()/2)
+                  .style("text-anchor", "left")
+				  .style("font-family", "sans-serif")
+				  .style("font-size", "30px")
+			      .style("font-style", "italic")
+			      .style("opacity", "0.15")
+                  .text(function (d) { return d; });
+		}
+		
+	</script>
+	 
+</head>
+<body>
+
+	<!-- chart to show the data points over age and fare -->
+	<div id="chartContainer">
+		
+		<script type="text/javascript">
+			
+			//use d3 to load titanic data
+			d3.csv("/data/titanic_data.csv", function(d) {
+				
+				var d_sex = d['Sex'];
+				var d_age = parseFloat(d['Age']);
+				var d_pclass = parseInt(d['Pclass']);
+				
+				//create a new column 'Category' to represent the combination of sex/age/pclass
+				//categorize on gender
+				if (d_sex == "male"){
+					//categorize on pclass and age 
+					d['Category'] = getCategory(d_age, d_pclass);
+				}
+				else{
+					d['Category'] = (data_length/2) + getCategory(d_age, d_pclass);
+				}
+				
+				//group data entry by category
+				data_grouped[d['Category'] - 1].push(d);
+				
+				//return data entry
+				return d;
+				
+			}, draw_plot);
+			
+			//categorize on age
+			function getCategory(age, pclass){
+				
+				var category = 0;
+				
+				if (age < 20) {
+					category = 4*(pclass - 1) + 1;
+				}
+				else if ((age >= 20) && (age < 40)){
+					category = 4*(pclass - 1) + 2;
+				}
+				else if ((age >= 40) && (age < 60)){
+					category = 4*(pclass - 1) + 3;
+				}
+				else if (age >= 60){
+					category = 4*(pclass - 1) + 4;
+				}
+				
+				return category;
+			}
+			
+		</script>
+		
+	</div>
+	
+  </body>
+</html>

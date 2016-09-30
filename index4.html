@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Titanic Data Survived vs Non-Survived Visualization</title>
+
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://dimplejs.org/dist/dimple.v2.0.0.min.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+	<script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+	<link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+  
+	<style>
+	  #categorySelect{
+		position: fixed;
+        top: 50px;
+        left: 750px;
+	  }
+	  
+	  #countSummary{
+		position: fixed;
+        top: 350px;
+        left: 750px;
+	  }
+	  
+	  #countSummary div p{
+		font-size: 25px;
+		font-weight: bold;
+		text-align: center;
+	  }
+	  
+	  #rect_text{
+		font-size: 25px;
+		font-weight: bold;
+	  }
+    </style>
+	<script>
+	
+		var nb_survived = 0;
+		var nb_nonsurvived = 0;
+		var rate = "NaN";
+		var gender = "all";
+		var pclass = "all";
+		var age = "all";
+		var fare = "all";
+		
+		$( document ).ready(function() {
+
+		   $('div.dropdown ul.dropdown-menu li a').click(function (e) {
+	
+					var $div = $(this).parent().parent().parent(); 
+				    //set parameter value
+					if ($div.attr("id") == "genderSelection"){
+						gender = $(this).attr("id");
+					}else if ($div.attr("id") == "pclassSelection"){
+						pclass = $(this).attr("id");
+					}else if ($div.attr("id") == "ageSelection"){
+						age = $(this).attr("id");
+					}else{
+						fare = $(this).attr("id");
+					}
+					//set button text
+					var $btn = $div.find('button');
+					$btn.html($(this).text() + ' <span class="caret"></span>');
+					$div.removeClass('open');
+					
+					e.preventDefault();
+					return false;
+			});
+			
+		});
+		
+	</script>
+	
+	<script type="text/javascript">
+	
+		function draw_scatterplot(data){
+			
+			/* ******************************************
+				Dimple.js section to built basic plot 
+			******************************************** */
+			
+			//create SVG container and chart
+            var svg = dimple.newSvg("#chartContainer", 800, 600);            
+            var chart = new dimple.chart(svg, data);
+			//set axis
+			var x = chart.addCategoryAxis("x", "Survived");
+            var y = chart.addMeasureAxis("y", "Count");
+			//display certain information with the data point
+            chart.addSeries("Survived", dimple.plot.bar);
+			//draw chart
+			chart.draw();
+			//remove x axis text
+			x.titleShape.text("");
+			
+			/* ******************************************
+				d3 section to customize the plot 
+			******************************************** */			
+		
+			//add a title
+			svg.append("text")
+			   .attr("x", chart._xPixels() + chart._widthPixels() / 2)
+			   .attr("y", chart._yPixels() - 30)
+			   .style("text-anchor", "middle")
+			   .style("font-family", "sans-serif")
+			   .style("font-weight", "bold")
+			   .style("font-size", "20px")
+			   .text("Titanic passengers survival number & rate");
+			
+			//add a description
+			svg.append("text")
+			   .attr("x", chart._xPixels())
+			   .attr("y", chart._yPixels() + chart._heightPixels() + 40)
+			   .style("text-anchor", "left")
+			   .style("font-family", "sans-serif")
+			   .style("font-size", "10px")
+			   .style("font-style", "italic")
+			   .text("* Data points whose age or fare value is null have been excluded from the dataset.");
+			   
+			svg.append("text")
+			   .attr("x", chart._xPixels())
+			   .attr("y", chart._yPixels() + chart._heightPixels() + 50)
+			   .style("text-anchor", "left")
+			   .style("font-family", "sans-serif")
+			   .style("font-size", "10px")
+			   .style("font-style", "italic")
+			   .text("* The Pclass('All classes button') is a proxy for socio-economic status (SES) : 1st ~ Upper; 2nd ~ Middle; 3rd ~ Lower");
+			
+			//add text to each bar
+			d3.select(d3.select(d3.selectAll("rect")[0][0])
+						.node()
+						.parentNode)
+				.insert("text")
+				.attr("id", "rect_text");
+			d3.select(d3.select(d3.selectAll("rect")[0][1])
+						.node()
+						.parentNode)
+				.insert("text")
+				.attr("id", "rect_text");		
+			
+			//calculate nb of survived and non-survived
+			compute_and_display_survived_nb(data);
+			
+			//set custom styles
+			reset_custom_styles();
+
+			/* ******************************************
+				d3 section to enable the interaction 
+			******************************************** */
+
+			//when a dropdown menu is clicked
+			d3.selectAll("div.dropdown ul.dropdown-menu li a")
+			
+            //add a click event
+            .on("click", function () {
+				//reset default values
+				nb_survived = 0;
+				nb_nonsurvived = 0;
+				var filterValues = data;
+				//filter on the modified selection
+				if (gender !== "all") filterValues = filter_data(filterValues, "Sex");
+				if (pclass !== "all") filterValues = filter_data(filterValues, "Pclass");
+				if (age !== "all") filterValues = filter_data(filterValues, "Age");
+				if (fare !== "all") filterValues = filter_data(filterValues, "Fare");
+				//calculate nb of survived and non-survived
+				compute_and_display_survived_nb(filterValues);
+				//set chart data to filtered data
+				chart.data = filterValues;
+				//redraw the chart
+				chart.draw();
+				//reset custom styles
+				reset_custom_styles();
+				//remove x axis text
+				x.titleShape.text("");
+			});
+			
+		}
+		
+		//define function to filter data
+		function filter_data(d, criterion){
+					
+			//get the list of criterion to use when filtering
+			var filterData = dimple.getUniqueValues(d, criterion);
+			var newFilters = []; 
+			//get data into filter
+			filterData.forEach(function (f) {
+				//if the criterion is gender
+				if (criterion === "Sex"){
+					if (f === gender) newFilters.push(f);	
+				}
+				//if the criterion is pclass
+				if (criterion === "Pclass"){
+					if (f === pclass) newFilters.push(f);
+				}
+				//if the criterion is age
+				if (criterion === "Age"){
+					if (parseFloat(f) < parseFloat(age) && parseFloat(f) >= (parseFloat(age) - 20)) newFilters.push(f);
+				}
+				//if the criterion is fare
+				if (criterion === "Fare"){
+					if (parseFloat(f) < parseFloat(fare) && parseFloat(f) >= (parseFloat(fare) - 50)) newFilters.push(f);
+				}
+			});
+			//return the filtered data
+			return dimple.filterData(d, criterion, newFilters);
+		}
+			
+		//define function to calculate & display nb of survived & non-survived
+		function compute_and_display_survived_nb(d){
+
+			//loop to compute nb
+			d.forEach(function (s) {
+				if (s["Survived"] === "1"){
+					nb_survived ++;
+				}
+				else{
+					nb_nonsurvived ++;
+				}
+			});
+			rate = nb_survived/(nb_survived + nb_nonsurvived);
+			//update the display nb
+			d3.select("#rateBox")
+				.select("p")
+				.html(rate.toFixed(3));
+			d3.select("#totalBox")
+				.select("p")
+				.html(nb_survived + nb_nonsurvived);
+		}
+		
+		// define function to reset the custom styles
+		function reset_custom_styles(){
+			
+			//customize the y axis title
+			d3.selectAll(".dimple-title")
+				.style("font-size", "12px")
+				.style("font-weight", "bold");
+			
+			//if there are two bars
+			if ((nb_nonsurvived != 0) && (nb_survived != 0)){
+				
+				//get bars
+				var rect_non_survived = d3.select(d3.selectAll("rect")[0][0]);
+				var rect_survived = d3.select(d3.selectAll("rect")[0][1]);
+				var text_non_survived = d3.select(d3.selectAll("#rect_text")[0][0]);
+				var text_survived = d3.select(d3.selectAll("#rect_text")[0][1]);
+				var label_non_survived = d3.select(d3.select(".dimple-axis")
+													.selectAll("g")[0][0])
+										.select("text");
+				var label_survived = d3.select(d3.select(".dimple-axis")
+													.selectAll("g")[0][1])
+										.select("text");
+				
+				//check if bars are in good order, if not, get the good ones
+				if (rect_non_survived.attr("id") === "1_1__"){
+					rect_non_survived = d3.select(d3.selectAll("rect")[0][1]);
+					rect_survived = d3.select(d3.selectAll("rect")[0][0]);
+					label_non_survived = d3.select(d3.select(".dimple-axis")
+													.selectAll("g")[0][1])
+													.select("text");
+					label_survived = d3.select(d3.select(".dimple-axis")
+													.selectAll("g")[0][0])
+													.select("text");
+				}
+				
+				//set non survived bar styles
+				label_non_survived.html("Non-Survived")
+					.style("font-size", "12px")
+					.style("font-weight", "bold");
+					
+				rect_non_survived.attr("fill", "#FB8072")
+							 .attr("stroke", "#d26b5f")
+							 .attr("width", "128")
+							 .attr("x", "176");	
+							 
+				text_non_survived.html(nb_nonsurvived)
+								.attr("x", "220")
+								.attr("y", rect_non_survived.attr("y"))
+								.attr("fill", "#DE6843");
+				
+				//set survived bar styles
+				label_survived.html("Survived")
+						.style("font-size", "12px")
+						.style("font-weight", "bold");
+			
+				rect_survived.attr("fill", "#B5E8B6")
+					     .attr("stroke", "#96C797")
+						 .attr("width", "128")
+						 .attr("x", "496");
+						 
+				text_survived.html(nb_survived)
+						.attr("x", "540")
+						.attr("y", rect_survived.attr("y"))
+						.attr("fill", "#679468");
+			}
+			
+			//if there is only non-survived bar
+			if((nb_nonsurvived != 0) && (nb_survived == 0)){
+			
+				//get bars
+				var rect_non_survived = d3.select(d3.selectAll("rect")[0][0]);
+				
+				//set non survived bar styles
+				d3.select(d3.select(".dimple-axis")
+							.selectAll("g")[0][0])
+					.select("text")
+					.html("Non-Survived")
+					.style("font-size", "12px")
+					.style("font-weight", "bold");
+					
+				rect_non_survived.attr("fill", "#FB8072")
+							 .attr("stroke", "#d26b5f")
+							 .attr("width", "128")
+							 .attr("x", "336");	
+							 
+				d3.select(d3.selectAll("#rect_text")[0][0])
+					.html(nb_nonsurvived)
+					.attr("x", "380")
+					.attr("y", rect_non_survived.attr("y"))
+					.attr("fill", "#DE6843");
+				
+				//set survived bar text to empty
+				d3.select(d3.selectAll("#rect_text")[0][1])
+					.html("");
+			}
+			
+			//if there is only survived bar
+			if((nb_nonsurvived == 0) && (nb_survived != 0)){
+			
+				//get bars
+				var rect_survived = d3.select(d3.selectAll("rect")[0][0]);
+				
+				//set non survived bar styles
+				d3.select(d3.select(".dimple-axis")
+							.selectAll("g")[0][0])
+					.select("text")
+					.html("Survived")
+					.style("font-size", "12px")
+					.style("font-weight", "bold");
+					
+				rect_survived.attr("fill", "#B5E8B6")
+					     .attr("stroke", "#96C797")
+						 .attr("width", "128")
+						 .attr("x", "336");
+							 
+				d3.select(d3.selectAll("#rect_text")[0][0])
+					.html(nb_survived)
+					.attr("x", "380")
+					.attr("y", rect_survived.attr("y"))
+					.attr("fill", "#DE6843");
+					
+				//set non-survived bar text to empty
+				d3.select(d3.selectAll("#rect_text")[0][1])
+					.html("");
+			}
+			
+			//if there is no bar
+			if((nb_nonsurvived == 0) && (nb_survived == 0)){
+				
+				//set bars text to empty
+				d3.select(d3.selectAll("#rect_text")[0][0])
+					.html("");
+				d3.select(d3.selectAll("#rect_text")[0][1])
+					.html("");
+			}
+		}
+
+	</script>
+	 
+</head>
+<body>
+
+	<!-- chart to show the data points over age and fare -->
+	<div id="chartContainer">
+		<script type="text/javascript">
+			//use d3 to load titanic data
+			d3.csv("/data/titanic_data.csv", function(d) {
+				//create a new parameter 'Count' with value equal to 1
+				d['Count'] = 1;
+				return d;
+			}, draw_scatterplot);
+		</script>
+	</div>
+
+	<!-- count box to show survived and non-survived passenger number according to the user's selection -->
+	<div id="countBox">
+		
+		<!-- show survived and non-survived passenger number -->
+		<div id="countSummary">
+			<div class="alert alert-info" id="totalBox">
+			  <strong>People Count : </strong> 
+			  <p></p>
+			</div>
+			<div class="alert alert-success" id="rateBox">
+			  <strong>Survival Rate : </strong> 
+			  <p></p>
+			</div>
+		</div>
+	
+		<!-- show data points satisfying user's selection on Sex and Pclass -->
+		<div id="categorySelect">
+			<div class="dropdown" id="genderSelection">
+				<button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown"> All gender
+					<span class="caret"></span>
+				</button>
+				<ul class="dropdown-menu">
+				  <li><a id="all" href="#">All gender</a></li>
+				  <li><a id="male" href="#">Male</a></li>
+				  <li><a id="female" href="#">Female</a></li>
+				</ul>
+			</div>
+			<br>
+			<div class="dropdown" id="pclassSelection">
+				<button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">All classes
+					<span class="caret"></span>
+				</button>
+				<ul class="dropdown-menu">
+				  <li><a id="all" href="#">All classes</a></li>
+				  <li><a id="1" href="#">1st class</a></li>
+				  <li><a id="2" href="#">2nd class</a></li>
+				  <li><a id="3" href="#">3rd class</a></li>
+				</ul>
+			</div>
+			<br>
+			<div class="dropdown" id="ageSelection">
+				<button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">All ages
+					<span class="caret"></span>
+				</button>
+				<ul class="dropdown-menu">
+				  <li><a id="all" href="#">All ages</a></li>
+				  <li><a id="20" href="#">[0-20)</a></li>
+				  <li><a id="40" href="#">[20-40)</a></li>
+				  <li><a id="60" href="#">[40-60)</a></li>
+				  <li><a id="80" href="#">[60+)</a></li>
+				</ul>
+			</div>
+			<br>
+			<div class="dropdown" id="fareSelection">
+				<button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">All prices
+					<span class="caret"></span>
+				</button>
+				<ul class="dropdown-menu">
+				  <li><a id="all" href="#">All prices</a></li>
+				  <li><a id="50" href="#">[0-50)</a></li>
+				  <li><a id="100" href="#">[50-100)</a></li>
+				  <li><a id="150" href="#">[100-150)</a></li>
+				  <li><a id="200" href="#">[150-200)</a></li>
+				  <li><a id="250" href="#">[200-250)</a></li>
+				  <li><a id="300" href="#">[250-300)</a></li>
+				  <li><a id="550" href="#">[300+) </a></li>
+				</ul>
+			</div>
+		</div>
+		
+	</div>
+	
+  </body>
+</html>

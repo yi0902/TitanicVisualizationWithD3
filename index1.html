@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Titanic Data Survived vs Non-Survived Visualization</title>
+
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="http://dimplejs.org/dist/dimple.v2.0.0.min.js"></script>
+
+    <style></style>
+	
+	<script type="text/javascript">
+		
+		function draw_scatterplot(data){
+			
+			/* ******************************************
+				Dimple.js section to built basic plot 
+			******************************************** */
+			
+			//create SVG container and chart
+            var svg = dimple.newSvg("#chartContainer", 1200, 900);            
+            var chart = new dimple.chart(svg, data);
+			//set axis
+			var x = chart.addMeasureAxis("x", "Age");
+            var y = chart.addMeasureAxis("y", "Fare");
+			//display maximum of information with the data point
+			//coloring by Survived as that will be the key in the legend
+            chart.addSeries(["Name", "Sex", "SibSp", "Parch", "Pclass", "Ticket", "Embarked", "Survived"], dimple.plot.scatter);
+            //add legend
+            var legend = chart.addLegend(1100, 125, 40, 300, "Right");
+			//draw chart
+			chart.draw();
+			//set y axis text
+			y.titleShape.text("Fare in US dollars");
+			
+			/* ******************************************
+				d3 section to customize the plot 
+			******************************************** */
+			//add a title
+			svg.append("text")
+			   .attr("x", chart._xPixels() + chart._widthPixels() / 2)
+			   .attr("y", chart._yPixels() - 20)
+			   .style("text-anchor", "middle")
+			   .style("font-family", "sans-serif")
+			   .style("font-weight", "bold")
+			   .text("Titanic passengers information chart (survived vs non-survived)");
+			
+			//add a description
+			svg.append("text")
+			   .attr("x", chart._xPixels())
+			   .attr("y", chart._yPixels() + chart._heightPixels() + 70)
+			   .style("text-anchor", "left")
+			   .style("font-family", "sans-serif")
+			   .style("font-size", "12px")
+			   .style("font-style", "italic")
+			   .text("* 1045 data points presented in above visualization. Data points whose age or fare value is null have already been excluded.");
+
+			svg.append("text")
+			   .attr("x", chart._xPixels())
+			   .attr("y", chart._yPixels() + chart._heightPixels() + 85)
+			   .style("text-anchor", "left")
+			   .style("font-family", "sans-serif")
+			   .style("font-size", "12px")
+			   .style("font-style", "italic")
+			   .text("* The size of the data points represent the sum of SibSp (sibling/spouses aboard) value and Parch (parents/children aboard) value.");
+			
+			//change the legend text
+			var state = ["Survived", "Non-Survived"];
+			d3.selectAll(".dimple-legend-text")
+				.data(state)
+				.html(function(d){return d;});
+			
+			//set the size of data points
+			svg.selectAll("circle")
+				.attr('r', function(d) {
+					//return by default the sum of SibSp & Parch
+                    return (d.aggField[2] + d.aggField[3])*1/6 + 3;
+               });  
+			   
+			//customize the axis title
+			d3.selectAll(".dimple-title")
+				.style("font-size", "12px")
+				.style("font-weight", "bold");
+				
+			/* ******************************************
+				d3 section to enable the interaction 
+			******************************************** */
+			
+			// this is a critical step.  By doing this we orphan the legend. This
+			// means it will not respond to graph updates.  Without this the legend
+			// will redraw when the chart refreshes removing the unchecked item and
+			// also dropping the events we define below.
+			chart.legends = [];
+
+			//add legend title and place it in the svg container           
+            svg.selectAll("title_text")
+            .data(["Click legend to","show/hide"])
+            .enter()
+            .append("text")
+            .attr("x", 1100)
+            .attr("y", function (d, i) { return 100 + i * 14; })
+            .style("font-family", "sans-serif")
+            .style("font-size", "11px")
+            .style("color", "Black")
+			.style("font-weight", "bold")
+            .text(function (d) { return d; });
+			
+					
+			//get the list of survived & non-survived to use when filtering
+            var filterValues = dimple.getUniqueValues(data, "Survived");
+
+            //get all the rectangles from the legend
+            legend.shapes.selectAll("rect")
+	
+            //add a click event to each rectangle
+            .on("click", function (e) {
+				//this indicates whether the item in the legend is already visible or not
+				var hide = false;
+				var newFilters = [];
+				//if the filters contain the clicked shape hide it           
+				filterValues.forEach(function (f) {
+				  if (f === e.aggField.slice(-1)[0]) {
+					hide = true;
+				  } 
+				  else {
+					newFilters.push(f);
+				  }
+				});
+				//hide the shape or show it
+				if (hide) {
+				  d3.select(this).style("opacity", 0.2);
+				}
+				else {
+				  newFilters.push(e.aggField.slice(-1)[0]);
+				  d3.select(this).style("opacity", 0.8);
+				}
+				//update the filters
+				filterValues = newFilters;
+				//filter the data
+				chart.data = dimple.filterData(data, "Survived", filterValues);
+	
+				//redraw the chart
+				chart.draw();
+				
+				//reset the customized axis label info
+				y.titleShape.text("Fare in US dollars");
+				d3.selectAll(".dimple-title")
+					.style("font-size", "12px")
+					.style("font-weight", "bold");
+					
+				//reset the circle size
+				svg.selectAll("circle")
+					.attr('r', function(d) {
+						//return by default the sum of SibSp & Parch
+						return (d.aggField[2] + d.aggField[3])*1/6 + 3;
+					}); 
+			});
+	
+		}
+		
+	</script>
+	 
+</head>
+<body>
+
+	<!-- chart to show the data points over age and fare -->
+	<div id="chartContainer">
+		<script type="text/javascript">
+			//use d3 to load titanic data
+			d3.csv("/data/titanic_data.csv",draw_scatterplot);
+		</script>
+	</div>
+	
+  </body>
+</html>
